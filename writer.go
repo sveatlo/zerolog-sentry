@@ -19,7 +19,7 @@ var levelsMapping = map[zerolog.Level]sentry.Level{
 	zerolog.PanicLevel: sentry.LevelFatal,
 }
 
-var _ = io.WriteCloser(new(Writer))
+var _ io.WriteCloser = new(Writer)
 
 var now = time.Now
 
