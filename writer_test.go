@@ -1,6 +1,7 @@
 package zlogsentry
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,12 +13,33 @@ import (
 
 var logEventJSON = []byte(`{"level":"error","requestId":"bee07485-2485-4f64-99e1-d10165884ca7","error":"dial timeout","time":"2020-06-25T17:19:00+03:00","message":"test message"}`)
 
+func newSentryClient() *sentry.Client {
+	client, err := sentry.NewClient(sentry.ClientOptions{
+		Dsn: "",
+	})
+	if err != nil {
+		panic(fmt.Sprintf("cannot get sentry client: %v", err))
+	}
+
+	return client
+}
+
+func TestWithZerolog(t *testing.T) {
+	w, err := New(newSentryClient())
+	require.Nil(t, err)
+
+	zl := zerolog.New(w).With().Timestamp().Logger()
+
+	zl.Debug().Msg("debug test")
+	zl.Error().Msg("error test")
+}
+
 func TestParseLogEvent(t *testing.T) {
 	ts := time.Now()
 
 	now = func() time.Time { return ts }
 
-	w, err := New("")
+	w, err := New(newSentryClient())
 	require.Nil(t, err)
 
 	ev, ok := w.parseLogEvent(logEventJSON)
@@ -33,7 +55,7 @@ func TestParseLogEvent(t *testing.T) {
 }
 
 func BenchmarkParseLogEvent(b *testing.B) {
-	w, err := New("")
+	w, err := New(newSentryClient())
 	if err != nil {
 		b.Errorf("failed to create writer: %v", err)
 	}
@@ -44,7 +66,7 @@ func BenchmarkParseLogEvent(b *testing.B) {
 }
 
 func BenchmarkParseLogEvent_DisabledLevel(b *testing.B) {
-	w, err := New("", WithLevels(zerolog.FatalLevel))
+	w, err := New(newSentryClient(), WithLevels(zerolog.FatalLevel))
 	if err != nil {
 		b.Errorf("failed to create writer: %v", err)
 	}
