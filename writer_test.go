@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var logEventJSON = []byte(`{"level":"error","requestId":"bee07485-2485-4f64-99e1-d10165884ca7","error":"dial timeout","time":"2020-06-25T17:19:00+03:00","message":"test message"}`)
+var logEventJSON = []byte(`{"level":"error","requestId":"bee07485-2485-4f64-99e1-d10165884ca7","error":"dial timeout","component":"foobar","time":"2020-06-25T17:19:00+03:00","message":"test message"}`)
 
 func newSentryClient() *sentry.Client {
 	client, err := sentry.NewClient(sentry.ClientOptions{
@@ -32,6 +32,12 @@ func TestWithZerolog(t *testing.T) {
 
 	zl.Debug().Msg("debug test")
 	zl.Error().Msg("error test")
+	zl.Error().
+		Err(fmt.Errorf("some custom error")).
+		Str("component", "test").
+		Int("n", 69).
+		Dur("lat", 42*time.Second).
+		Msg("error test with extra data")
 }
 
 func TestParseLogEvent(t *testing.T) {
@@ -47,9 +53,15 @@ func TestParseLogEvent(t *testing.T) {
 
 	assert.Equal(t, ts, ev.Timestamp)
 	assert.Equal(t, sentry.LevelError, ev.Level)
+	// logger
 	assert.Equal(t, "zerolog", ev.Logger)
+	// message from message field
 	assert.Equal(t, "test message", ev.Message)
 
+	// extra data from other zerolog fields
+	assert.Equal(t, "foobar", ev.Extra["component"])
+
+	// exception from error field
 	require.Len(t, ev.Exception, 1)
 	assert.Equal(t, "dial timeout", ev.Exception[0].Value)
 }
