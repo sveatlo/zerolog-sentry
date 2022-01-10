@@ -3,20 +3,32 @@
 
 ### Example
 ```go
+package main
+
 import (
 	"errors"
 	"io"
 	stdlog "log"
 	"os"
 
-	"github.com/archdx/zerolog-sentry"
+	"github.com/sveatlo/zerolog-sentry"
 	"github.com/rs/zerolog"
+	"github.com/getsentry/sentry-go"
 )
 
 func main() {
-    _ = sentry.Init(...)
+	scope := sentry.NewScope()
+	client, _ := sentry.NewClient(sentry.ClientOptions{
+		// Either set your DSN here or set the SENTRY_DSN environment variable.
+		Dsn: "...",
+		// Enable printing of SDK debug messages.
+		// Useful when getting started or trying to figure something out.
+		Environment: "local",
+		Debug:   true,
+	})
+	_ = sentry.NewHub(client, scope)
 
-	w, err := zlogsentry.New(sentry.CurrentHub().Client())
+	w, err := zlogsentry.New(client1)
 	if err != nil {
 		stdlog.Fatal(err)
 	}
@@ -24,7 +36,6 @@ func main() {
 	defer w.Close()
 
 	logger := zerolog.New(io.MultiWriter(w, os.Stdout)).With().Timestamp().Logger()
-
 	logger.Error().Err(errors.New("dial timeout")).Msg("test message")
 }
 
