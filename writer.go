@@ -30,9 +30,15 @@ type Writer struct {
 
 	levels       map[zerolog.Level]struct{}
 	flushTimeout time.Duration
+
+	name string
 }
 
 func New(client *sentry.Client, opts ...WriterOption) (*Writer, error) {
+	return NewWithName(client, "zerolog", opts...)
+}
+
+func NewWithName(client *sentry.Client, name string, opts ...WriterOption) (*Writer, error) {
 	cfg := newDefaultConfig()
 	for _, opt := range opts {
 		opt(&cfg)
@@ -47,6 +53,7 @@ func New(client *sentry.Client, opts ...WriterOption) (*Writer, error) {
 		client:       client,
 		levels:       levels,
 		flushTimeout: cfg.flushTimeout,
+		name:         name,
 	}, nil
 }
 
@@ -69,8 +76,6 @@ func (w *Writer) Close() error {
 }
 
 func (w *Writer) parseLogEvent(data []byte) (*sentry.Event, bool) {
-	const logger = "zerolog"
-
 	sentryLvl, err := w.extractSentryLvl(data)
 	if err != nil {
 		return nil, false
@@ -79,7 +84,7 @@ func (w *Writer) parseLogEvent(data []byte) (*sentry.Event, bool) {
 	event := sentry.Event{
 		Timestamp: now(),
 		Level:     sentryLvl,
-		Logger:    logger,
+		Logger:    w.name,
 		Extra:     map[string]interface{}{},
 	}
 
