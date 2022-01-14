@@ -1,6 +1,8 @@
+// Package zlogsentry provides a zerolog writer which sends selected events to sentry.
 package zlogsentry
 
 import (
+	"errors"
 	"io"
 	"time"
 	"unsafe"
@@ -69,23 +71,8 @@ func (w *Writer) Close() error {
 func (w *Writer) parseLogEvent(data []byte) (*sentry.Event, bool) {
 	const logger = "zerolog"
 
-	lvlStr, err := jsonparser.GetUnsafeString(data, zerolog.LevelFieldName)
+	sentryLvl, err := w.extractSentryLvl(data)
 	if err != nil {
-		return nil, false
-	}
-
-	lvl, err := zerolog.ParseLevel(lvlStr)
-	if err != nil {
-		return nil, false
-	}
-
-	_, enabled := w.levels[lvl]
-	if !enabled {
-		return nil, false
-	}
-
-	sentryLvl, ok := levelsMapping[lvl]
-	if !ok {
 		return nil, false
 	}
 
@@ -118,6 +105,32 @@ func (w *Writer) parseLogEvent(data []byte) (*sentry.Event, bool) {
 	}
 
 	return &event, true
+}
+
+func (w *Writer) extractSentryLvl(data []byte) (sentryLvl sentry.Level, err error) {
+	lvlStr, err := jsonparser.GetUnsafeString(data, zerolog.LevelFieldName)
+	if err != nil {
+		return
+	}
+
+	lvl, err := zerolog.ParseLevel(lvlStr)
+	if err != nil {
+		return
+	}
+
+	_, enabled := w.levels[lvl]
+	if !enabled {
+		err = errors.New("level disabled")
+		return
+	}
+
+	sentryLvl, ok := levelsMapping[lvl]
+	if !ok {
+		err = errors.New("no such sentry level")
+		return
+	}
+
+	return
 }
 
 func newStacktrace() *sentry.Stacktrace {
