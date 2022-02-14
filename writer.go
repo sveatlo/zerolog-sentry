@@ -28,8 +28,9 @@ var now = time.Now
 type Writer struct {
 	client *sentry.Client
 
-	levels       map[zerolog.Level]struct{}
-	flushTimeout time.Duration
+	levels        map[zerolog.Level]struct{}
+	specialFields map[string]SpecialFieldType
+	flushTimeout  time.Duration
 
 	name string
 }
@@ -49,18 +50,24 @@ func NewWithName(client *sentry.Client, name string, opts ...WriterOption) (*Wri
 		levels[lvl] = struct{}{}
 	}
 
+	specialFields := make(map[string]SpecialFieldType, len(cfg.specialFields))
+	for k, t := range cfg.specialFields {
+		specialFields[k] = t
+	}
+
 	return &Writer{
-		client:       client,
-		levels:       levels,
-		flushTimeout: cfg.flushTimeout,
-		name:         name,
+		client:        client,
+		levels:        levels,
+		specialFields: specialFields,
+		flushTimeout:  cfg.flushTimeout,
+		name:          name,
 	}, nil
 }
 
 func (w *Writer) Write(data []byte) (int, error) {
-	event, ok := w.parseLogEvent(data)
-	if ok {
-		w.client.CaptureEvent(event, nil, nil)
+	event, hint, err := w.parseLogEvent(data)
+	if err == nil {
+		w.client.CaptureEvent(event, hint, nil)
 		// should flush before os.Exit
 		if event.Level == sentry.LevelFatal {
 			w.client.Flush(w.flushTimeout)
@@ -75,41 +82,58 @@ func (w *Writer) Close() error {
 	return nil
 }
 
-func (w *Writer) parseLogEvent(data []byte) (*sentry.Event, bool) {
+func (w *Writer) parseLogEvent(data []byte) (event *sentry.Event, eventHint *sentry.EventHint, err error) {
 	sentryLvl, err := w.extractSentryLvl(data)
 	if err != nil {
-		return nil, false
+		return
 	}
 
-	event := sentry.Event{
+	event = &sentry.Event{
 		Timestamp: now(),
 		Level:     sentryLvl,
 		Logger:    w.name,
 		Extra:     map[string]interface{}{},
+		Tags:      map[string]string{},
 	}
+	eventHint = &sentry.EventHint{}
 
-	err = jsonparser.ObjectEach(data, func(key, value []byte, vt jsonparser.ValueType, offset int) error {
-		switch string(key) {
+	err = jsonparser.ObjectEach(data, func(keyRaw, valueRaw []byte, vt jsonparser.ValueType, offset int) error {
+		key := string(keyRaw)
+		// value := string(valueRaw)
+		value := bytesToStrUnsafe(valueRaw)
+
+		switch key {
 		case zerolog.LevelFieldName, zerolog.TimestampFieldName:
 		case zerolog.MessageFieldName:
-			event.Message = bytesToStrUnsafe(value)
+			event.Message = value
 		case zerolog.ErrorFieldName:
 			event.Exception = append(event.Exception, sentry.Exception{
-				Value:      bytesToStrUnsafe(value),
+				Value:      value,
 				Stacktrace: newStacktrace(),
 			})
 		default:
-			event.Extra[string(key)] = string(value)
+			// first check if field is of special type
+			specialType, ok := w.specialFields[key]
+			if !ok {
+				// not special => add to additional data
+				event.Extra[key] = value
+				return nil
+			}
+
+			switch specialType {
+			case SpecialFieldTag:
+				event.Tags[key] = value
+			case SpecialFieldUserID:
+				event.User = sentry.User{
+					ID: value,
+				}
+			}
 		}
 
 		return nil
 	})
 
-	if err != nil {
-		return nil, false
-	}
-
-	return &event, true
+	return
 }
 
 func (w *Writer) extractSentryLvl(data []byte) (sentryLvl sentry.Level, err error) {

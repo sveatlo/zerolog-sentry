@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var logEventJSON = []byte(`{"level":"error","requestId":"bee07485-2485-4f64-99e1-d10165884ca7","error":"dial timeout","component":"foobar","time":"2020-06-25T17:19:00+03:00","message":"test message"}`)
+var logEventJSON = []byte(`{"level":"error","requestId":"bee07485-2485-4f64-99e1-d10165884ca7","error":"dial timeout","component":"foobar","time":"2020-06-25T17:19:00+03:00","user_id": 12345, "message":"test message"}`)
 
 func newSentryClient() *sentry.Client {
 	client, err := sentry.NewClient(sentry.ClientOptions{
@@ -42,14 +42,13 @@ func TestWithZerolog(t *testing.T) {
 
 func TestParseLogEvent(t *testing.T) {
 	ts := time.Now()
-
 	now = func() time.Time { return ts }
 
 	w, err := New(newSentryClient())
 	require.Nil(t, err)
 
-	ev, ok := w.parseLogEvent(logEventJSON)
-	require.True(t, ok)
+	ev, _, err := w.parseLogEvent(logEventJSON)
+	require.Nil(t, err)
 
 	assert.Equal(t, ts, ev.Timestamp)
 	assert.Equal(t, sentry.LevelError, ev.Level)
@@ -64,6 +63,32 @@ func TestParseLogEvent(t *testing.T) {
 	// exception from error field
 	require.Len(t, ev.Exception, 1)
 	assert.Equal(t, "dial timeout", ev.Exception[0].Value)
+}
+
+func TestParseLogEventSpecialTag(t *testing.T) {
+	ts := time.Now()
+	now = func() time.Time { return ts }
+
+	w, err := New(newSentryClient(), WithSpecialFieldType("component", SpecialFieldTag))
+	require.Nil(t, err)
+
+	ev, _, err := w.parseLogEvent(logEventJSON)
+	require.Nil(t, err)
+
+	assert.Equal(t, map[string]string{"component": "foobar"}, ev.Tags)
+}
+
+func TestParseLogEventSpecialUserID(t *testing.T) {
+	ts := time.Now()
+	now = func() time.Time { return ts }
+
+	w, err := New(newSentryClient(), WithSpecialFieldType("user_id", SpecialFieldUserID))
+	require.Nil(t, err)
+
+	ev, _, err := w.parseLogEvent(logEventJSON)
+	require.Nil(t, err)
+
+	assert.Equal(t, "12345", ev.User.ID)
 }
 
 func BenchmarkParseLogEvent(b *testing.B) {

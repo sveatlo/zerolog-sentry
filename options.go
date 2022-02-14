@@ -9,7 +9,16 @@ import (
 type config struct {
 	levels       []zerolog.Level
 	flushTimeout time.Duration
+
+	specialFields map[string]SpecialFieldType
 }
+
+type SpecialFieldType int
+
+const (
+	SpecialFieldTag SpecialFieldType = iota
+	SpecialFieldUserID
+)
 
 func newDefaultConfig() config {
 	return config{
@@ -18,7 +27,8 @@ func newDefaultConfig() config {
 			zerolog.FatalLevel,
 			zerolog.PanicLevel,
 		},
-		flushTimeout: 3 * time.Second,
+		flushTimeout:  3 * time.Second,
+		specialFields: map[string]SpecialFieldType{},
 	}
 }
 
@@ -28,5 +38,11 @@ type WriterOption func(*config)
 func WithLevels(levels ...zerolog.Level) WriterOption {
 	return func(cfg *config) {
 		cfg.levels = levels
+	}
+}
+
+func WithSpecialFieldType(key string, typ SpecialFieldType) WriterOption {
+	return func(cfg *config) {
+		cfg.specialFields[key] = typ
 	}
 }
